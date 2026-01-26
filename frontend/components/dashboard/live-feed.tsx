@@ -1,29 +1,48 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { Activity, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { Activity, CheckCircle, XCircle } from "lucide-react"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api"
 
 interface Transaction {
   id: string
   amount: string
   merchant: string
-  status: "approved" | "blocked" | "review"
-  score: number
+  status: "approved" | "blocked"
   time: string
 }
 
-const initialTransactions: Transaction[] = [
-  { id: "TXN-89234", amount: "$124.50", merchant: "Amazon.com", status: "approved", score: 12, time: "Just now" },
-  { id: "TXN-89233", amount: "$2,340.00", merchant: "Unknown Merchant", status: "blocked", score: 94, time: "10s ago" },
-  { id: "TXN-89232", amount: "$89.99", merchant: "Netflix", status: "approved", score: 5, time: "25s ago" },
-  { id: "TXN-89231", amount: "$567.00", merchant: "First Time Vendor", status: "review", score: 62, time: "1m ago" },
-  { id: "TXN-89230", amount: "$45.00", merchant: "Uber", status: "approved", score: 8, time: "2m ago" },
-  { id: "TXN-89229", amount: "$1,200.00", merchant: "Wire Transfer", status: "review", score: 71, time: "3m ago" },
-  { id: "TXN-89228", amount: "$32.50", merchant: "Starbucks", status: "approved", score: 3, time: "4m ago" },
-]
+interface TransactionRow {
+  step: number | string
+  type: string
+  amount: number | string
+  nameOrig: string
+  isFraud?: boolean | string | number
+  predictedIsFraud?: boolean | string | number
+}
+
+const formatAmount = (amount: string) =>
+  Number(amount).toLocaleString("en-US", { style: "currency", currency: "USD" })
+
+const toTransaction = (row: TransactionRow): Transaction => {
+  const fraudValue = row.predictedIsFraud ?? row.isFraud
+  const isFraudFlag = typeof fraudValue === "boolean" ? fraudValue : String(fraudValue) === "1"
+
+  return {
+    id: row.nameOrig,
+    amount: formatAmount(String(row.amount)),
+    merchant: row.type,
+    status: isFraudFlag ? "blocked" : "approved",
+    time: `Step ${row.step}`,
+  }
+}
+
+
+const initialTransactions: Transaction[] = []
 
 const statusConfig = {
   approved: {
@@ -36,39 +55,55 @@ const statusConfig = {
     label: "Blocked",
     className: "bg-danger/10 text-danger border-danger/20",
   },
-  review: {
-    icon: AlertCircle,
-    label: "Review",
-    className: "bg-warning/10 text-warning border-warning/20",
-  },
 }
 
 export function LiveFeed() {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [isLive, setIsLive] = useState(true)
+  const [sourceRows, setSourceRows] = useState<TransactionRow[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const nextIndexRef = useRef<number>(initialTransactions.length)
 
   useEffect(() => {
-    if (!isLive) return
+    const fetchTransactions = async () => {
+      try {
+        setIsLoading(true)
+        setLoadError(null)
+        const res = await fetch(`${API_BASE_URL}/transactions?limit=200&use_model=false`)
+        if (!res.ok) throw new Error(`status ${res.status}`)
+        const data = await res.json()
+
+        console.log("DATA FROM API 👇", data)
+
+        if (Array.isArray(data) && data.length) {
+          setSourceRows(data)
+          setTransactions(data.slice(0, 7).map(toTransaction))
+          nextIndexRef.current = 7
+        }
+      } catch (error) {
+        console.error("Failed to load live transactions from backend:", error)
+        setLoadError("Impossible de charger les transactions depuis le backend.")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchTransactions()
+  }, [])
+
+  useEffect(() => {
+    if (!isLive || sourceRows.length === 0) return
 
     const interval = setInterval(() => {
-      const newTransaction: Transaction = {
-        id: `TXN-${Math.floor(Math.random() * 100000)}`,
-        amount: `$${(Math.random() * 5000).toFixed(2)}`,
-        merchant: ["Amazon.com", "PayPal", "Stripe", "Unknown Vendor", "Wire Transfer", "Apple Store"][
-          Math.floor(Math.random() * 6)
-        ],
-        status: ["approved", "approved", "approved", "blocked", "review"][
-          Math.floor(Math.random() * 5)
-        ] as Transaction["status"],
-        score: Math.floor(Math.random() * 100),
-        time: "Just now",
-      }
-
+      const current = sourceRows[nextIndexRef.current % sourceRows.length]
+      const newTransaction = toTransaction(current)
+      nextIndexRef.current += 1
       setTransactions((prev) => [newTransaction, ...prev.slice(0, 6)])
     }, 3000)
 
     return () => clearInterval(interval)
-  }, [isLive])
+  }, [isLive, sourceRows])
 
   return (
     <Card className="border-border bg-card">
@@ -95,6 +130,21 @@ export function LiveFeed() {
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
+          {isLoading && transactions.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-4 text-sm text-muted-foreground">
+              Chargement des transactions depuis paysim.csv…
+            </div>
+          )}
+          {!isLoading && loadError && transactions.length === 0 && (
+            <div className="rounded-lg border border-dashed border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+              {loadError}
+            </div>
+          )}
+          {!isLoading && !loadError && transactions.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-4 text-sm text-muted-foreground">
+              Aucune transaction disponible pour le moment.
+            </div>
+          )}
           {transactions.map((transaction, index) => {
             const StatusIcon = statusConfig[transaction.status].icon
             return (
@@ -117,13 +167,9 @@ export function LiveFeed() {
                 <div className="text-right">
                   <p className="text-sm font-semibold text-card-foreground">{transaction.amount}</p>
                   <div className="flex items-center justify-end gap-2">
-                    <Badge
-                      variant="outline"
-                      className={cn("text-xs", statusConfig[transaction.status].className)}
-                    >
+                    <Badge variant="outline" className={cn("text-xs", statusConfig[transaction.status].className)}>
                       {statusConfig[transaction.status].label}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">Score: {transaction.score}</span>
                   </div>
                 </div>
               </div>
