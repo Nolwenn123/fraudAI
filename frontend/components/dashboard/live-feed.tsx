@@ -70,7 +70,7 @@ export function LiveFeed() {
       try {
         setIsLoading(true)
         setLoadError(null)
-        const res = await fetch(`${API_BASE_URL}/transactions?limit=200&use_model=false`)
+        const res = await fetch(`${API_BASE_URL}/transactions?limit=2000&use_model=true`)
         if (!res.ok) throw new Error(`status ${res.status}`)
         const data = await res.json()
 

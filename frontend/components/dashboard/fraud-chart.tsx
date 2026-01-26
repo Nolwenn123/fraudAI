@@ -11,18 +11,10 @@ import {
 } from "recharts"
 
 const data = [
-  { time: "00:00", transactions: 1250, fraudulent: 12 },
-  { time: "02:00", transactions: 890, fraudulent: 8 },
-  { time: "04:00", transactions: 450, fraudulent: 3 },
-  { time: "06:00", transactions: 780, fraudulent: 6 },
-  { time: "08:00", transactions: 2100, fraudulent: 18 },
-  { time: "10:00", transactions: 3400, fraudulent: 28 },
-  { time: "12:00", transactions: 4200, fraudulent: 35 },
-  { time: "14:00", transactions: 3800, fraudulent: 31 },
-  { time: "16:00", transactions: 4500, fraudulent: 38 },
-  { time: "18:00", transactions: 5200, fraudulent: 42 },
-  { time: "20:00", transactions: 4100, fraudulent: 33 },
-  { time: "22:00", transactions: 2800, fraudulent: 22 },
+  { type: "PAYMENT", transactions: 4200, fraudulent: 12 },
+  { type: "TRANSFER", transactions: 1800, fraudulent: 48 },
+  { type: "CASH_OUT", transactions: 2300, fraudulent: 36 },
+  { type: "DEBIT", transactions: 900, fraudulent: 4 },
 ]
 
 export function FraudChart() {
@@ -31,7 +23,7 @@ export function FraudChart() {
       <CardHeader>
         <CardTitle className="text-card-foreground">Transaction Volume</CardTitle>
         <CardDescription>
-          Real-time transaction monitoring with fraud detection overlay
+          Transactions by type with fraud detection overlay
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -49,7 +41,7 @@ export function FraudChart() {
                 </linearGradient>
               </defs>
               <XAxis
-                dataKey="time"
+                dataKey="type"
                 stroke="oklch(0.65 0 0)"
                 fontSize={12}
                 tickLine={false}
