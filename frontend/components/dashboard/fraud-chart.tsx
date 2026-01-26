@@ -17,6 +17,12 @@ const data = [
   { type: "DEBIT", transactions: 900, fraudulent: 4 },
 ]
 
+const FRAUD_SCALE_FACTOR = 10
+const chartData = data.map((item) => ({
+  ...item,
+  fraudulentDisplay: Math.min(item.fraudulent * FRAUD_SCALE_FACTOR, item.transactions * 0.9),
+}))
+
 export function FraudChart() {
   return (
     <Card className="border-border bg-card">
@@ -29,7 +35,7 @@ export function FraudChart() {
       <CardContent>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data}>
+            <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="colorTransactions" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="oklch(0.65 0.18 250)" stopOpacity={0.3} />
@@ -61,6 +67,12 @@ export function FraudChart() {
                   borderRadius: "8px",
                   color: "oklch(0.95 0 0)",
                 }}
+                formatter={(value, name, props) => {
+                  if (name === "Flagged as Fraud") {
+                    return [props.payload.fraudulent, name]
+                  }
+                  return [value, name]
+                }}
               />
               <Area
                 type="monotone"
@@ -73,7 +85,7 @@ export function FraudChart() {
               />
               <Area
                 type="monotone"
-                dataKey="fraudulent"
+                dataKey="fraudulentDisplay"
                 stroke="oklch(0.65 0.2 25)"
                 fillOpacity={1}
                 fill="url(#colorFraud)"
