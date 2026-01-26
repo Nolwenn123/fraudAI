@@ -38,3 +38,11 @@ class ModelInfo(BaseModel):
     n_features: int
     features: List[str] = Field(default_factory=list)
     model_path: str
+
+
+class TransactionSample(BaseModel):
+    step: int = Field(..., ge=0)
+    type: TxType
+    amount: float = Field(..., ge=0)
+    nameOrig: str
+    isFraud: bool
