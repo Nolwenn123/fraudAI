@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   DollarSign,
   Timer,
-  Target,
 } from "lucide-react"
 
 export default function OverviewPage() {
@@ -58,14 +57,6 @@ export default function OverviewPage() {
           description="Target: <300ms"
           icon={Timer}
           trend={{ value: 5.2, isPositive: true }}
-        />
-        <StatsCard
-          title="Model Accuracy"
-          value="99.2%"
-          description="Last 30 days"
-          icon={Target}
-          variant="success"
-          trend={{ value: 0.3, isPositive: true }}
         />
       </div>
 
