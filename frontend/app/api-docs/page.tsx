@@ -18,6 +18,7 @@ import {
   Globe,
   Key,
   ChevronRight,
+  Gauge,
 } from "lucide-react"
 
 const endpoints = [
@@ -229,7 +230,7 @@ export default function ApiDocsPage() {
       description="Integrate fraud detection into your payment system"
     >
       {/* Quick Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card className="border-border bg-card">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -278,6 +279,19 @@ export default function ApiDocsPage() {
               <div>
                 <p className="text-2xl font-bold text-card-foreground">OAuth 2.0</p>
                 <p className="text-sm text-muted-foreground">Authentication</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border bg-card">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-lg bg-violet-500/10 p-3">
+                <Gauge className="h-6 w-6 text-violet-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-card-foreground">2,000 req/min</p>
+                <p className="text-sm text-muted-foreground">Auto-throttling active</p>
               </div>
             </div>
           </CardContent>
