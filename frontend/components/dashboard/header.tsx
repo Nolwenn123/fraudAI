@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { Search, ChevronDown } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { Search, ChevronDown, Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,6 +20,9 @@ interface HeaderProps {
 }
 
 export function Header({ title, description }: HeaderProps) {
+  const pathname = usePathname()
+  const isOnAlertsPage = pathname === "/alerts"
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div>
@@ -37,6 +41,16 @@ export function Header({ title, description }: HeaderProps) {
             className="w-64 bg-secondary pl-9"
           />
         </div>
+
+        {/* Notifications */}
+        <Link href="/alerts" className="relative p-2 text-gray-400 hover:text-white transition-colors">
+          <Bell className="h-5 w-5" />
+          {!isOnAlertsPage && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
+              3
+            </span>
+          )}
+        </Link>
 
         {/* User Menu */}
         <DropdownMenu>
