@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils"
 import { Activity, CheckCircle, XCircle } from "lucide-react"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api"
+const LIVE_FEED_LIMIT = 50
+const CACHE_TTL_MS = 5 * 60 * 1000
 
 interface Transaction {
   id: string
@@ -44,6 +46,9 @@ const toTransaction = (row: TransactionRow): Transaction => {
 
 const initialTransactions: Transaction[] = []
 
+let cachedRows: TransactionRow[] | null = null
+let cachedAt = 0
+
 const statusConfig = {
   approved: {
     icon: CheckCircle,
@@ -70,13 +75,23 @@ export function LiveFeed() {
       try {
         setIsLoading(true)
         setLoadError(null)
-        const res = await fetch(`${API_BASE_URL}/transactions?limit=2000&use_model=true`)
+        const now = Date.now()
+        if (cachedRows && now - cachedAt < CACHE_TTL_MS) {
+          setSourceRows(cachedRows)
+          setTransactions(cachedRows.slice(0, 7).map(toTransaction))
+          nextIndexRef.current = 7
+          return
+        }
+
+        const res = await fetch(
+          `${API_BASE_URL}/transactions?limit=${LIVE_FEED_LIMIT}&use_model=true`
+        )
         if (!res.ok) throw new Error(`status ${res.status}`)
         const data = await res.json()
 
-        console.log("DATA FROM API 👇", data)
-
         if (Array.isArray(data) && data.length) {
+          cachedRows = data
+          cachedAt = now
           setSourceRows(data)
           setTransactions(data.slice(0, 7).map(toTransaction))
           nextIndexRef.current = 7

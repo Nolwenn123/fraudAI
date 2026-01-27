@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,6 +46,8 @@ import {
   TrendingUp,
 } from "lucide-react"
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api"
+
 interface RiskFactor {
   category: string
   description: string
@@ -77,165 +79,22 @@ interface Alert {
   timeWindow?: string
 }
 
-const initialAlerts: Alert[] = [
-  {
-    id: "ALT-001",
-    type: "high",
-    category: "Unusual Pattern",
-    title: "Multiple High-Value Transactions",
-    description: "15 transactions totaling $48,000 detected from new device in the last 30 minutes",
-    transactionId: "TXN-89234",
-    amount: "$48,000.00",
-    location: "Lagos, Nigeria",
-    timestamp: "2024-01-22T14:32:15Z",
-    score: 96,
-    status: "pending",
-    userName: "John Smith",
-    userEmail: "john.smith@email.com",
-    userResponse: null,
-    device: "iPhone 14 Pro (New)",
-    ipAddress: "102.89.45.xxx",
-    userLocation: "London, UK",
-    transactionCount: 15,
-    timeWindow: "30 minutes",
-    riskFactors: [
-      { category: "Velocity Check", description: "15 transactions in < 30 mins (Normal: 2-3/day)", severity: "high", icon: "velocity" },
-      { category: "Geographic Mismatch", description: "IP in Lagos, Nigeria - User Address in London, UK", severity: "high", icon: "geographic" },
-      { category: "New Device", description: "iPhone 14 Pro - First time seen on this account", severity: "medium", icon: "device" },
-      { category: "Amount Anomaly", description: "Total $48,000 exceeds 30-day average by 850%", severity: "high", icon: "amount" },
-    ],
-  },
-  {
-    id: "ALT-002",
-    type: "high",
-    category: "Account Takeover",
-    title: "Suspicious Login Attempt",
-    description: "Login from unknown device followed by password change and large withdrawal",
-    transactionId: "TXN-89233",
-    amount: "$12,500.00",
-    location: "Moscow, Russia",
-    timestamp: "2024-01-22T14:28:45Z",
-    score: 92,
-    status: "pending",
-    userName: "Alice Johnson",
-    userEmail: "alice.johnson@email.com",
-    userResponse: null,
-    device: "Unknown Windows PC",
-    ipAddress: "185.43.12.xxx",
-    userLocation: "New York, USA",
-    transactionCount: 3,
-    timeWindow: "5 minutes",
-    riskFactors: [
-      { category: "Identity Compromise", description: "Password changed immediately after login from new location", severity: "high", icon: "identity" },
-      { category: "Geographic Mismatch", description: "Login from Moscow, Russia - Account based in New York, USA", severity: "high", icon: "geographic" },
-      { category: "Behavioral Pattern", description: "Immediate large withdrawal after password change", severity: "high", icon: "pattern" },
-      { category: "New Device", description: "Unknown Windows PC - Never seen before", severity: "medium", icon: "device" },
-    ],
-  },
-  {
-    id: "ALT-003",
-    type: "medium",
-    category: "Velocity",
-    title: "Transaction Velocity Exceeded",
-    description: "Card used 8 times in 5 minutes across different merchants",
-    transactionId: "TXN-89231",
-    amount: "$3,240.00",
-    location: "Hong Kong",
-    timestamp: "2024-01-22T14:18:45Z",
-    score: 74,
-    status: "pending",
-    userName: "Michael Chen",
-    userEmail: "michael.chen@email.com",
-    userResponse: null,
-    device: "Chrome on MacOS",
-    ipAddress: "203.145.xxx.xxx",
-    userLocation: "Hong Kong",
-    transactionCount: 8,
-    timeWindow: "5 minutes",
-    riskFactors: [
-      { category: "Velocity Check", description: "8 transactions in 5 minutes across 6 different merchants", severity: "medium", icon: "velocity" },
-      { category: "Merchant Pattern", description: "Mix of electronics, gift cards, and gaming - common fraud pattern", severity: "medium", icon: "pattern" },
-      { category: "Amount Pattern", description: "Consistent amounts of $400-$450 per transaction", severity: "low", icon: "amount" },
-    ],
-  },
-  {
-    id: "ALT-004",
-    type: "medium",
-    category: "Geographic",
-    title: "Impossible Travel Detected",
-    description: "Transaction in Paris 2 hours after transaction in New York",
-    transactionId: "TXN-89230",
-    amount: "$890.00",
-    location: "Paris, France",
-    timestamp: "2024-01-22T14:15:22Z",
-    score: 68,
-    status: "resolved",
-    userName: "Emma Davis",
-    userEmail: "emma.davis@email.com",
-    userResponse: "legitimate",
-    device: "iPhone 13",
-    ipAddress: "89.12.xxx.xxx",
-    userLocation: "New York, USA",
-    transactionCount: 2,
-    timeWindow: "2 hours",
-    riskFactors: [
-      { category: "Impossible Travel", description: "Transaction in Paris 2h after New York - Minimum flight time: 7h", severity: "medium", icon: "geographic" },
-      { category: "Known Device", description: "iPhone 13 - Seen 45 times in last 6 months", severity: "low", icon: "device" },
-    ],
-  },
-  {
-    id: "ALT-005",
-    type: "low",
-    category: "First-Time",
-    title: "New Merchant Category",
-    description: "First cryptocurrency exchange transaction for this user",
-    transactionId: "TXN-89228",
-    amount: "$2,500.00",
-    location: "Online",
-    timestamp: "2024-01-22T14:12:18Z",
-    score: 42,
-    status: "false_positive",
-    userName: "David Brown",
-    userEmail: "david.brown@email.com",
-    userResponse: "legitimate",
-    device: "Safari on MacOS",
-    ipAddress: "72.45.xxx.xxx",
-    userLocation: "San Francisco, USA",
-    transactionCount: 1,
-    timeWindow: "N/A",
-    riskFactors: [
-      { category: "New Category", description: "First crypto exchange transaction - User has no history in this category", severity: "low", icon: "pattern" },
-      { category: "Amount Check", description: "Amount within normal range for user's profile", severity: "low", icon: "amount" },
-    ],
-  },
-  {
-    id: "ALT-006",
-    type: "high",
-    category: "Card Testing",
-    title: "Potential Card Testing",
-    description: "Multiple small transactions ($1-$5) followed by large purchase attempt",
-    transactionId: "TXN-89227",
-    amount: "$5,600.00",
-    location: "Unknown VPN",
-    timestamp: "2024-01-22T14:08:55Z",
-    score: 88,
-    status: "confirmed",
-    userName: "James Wilson",
-    userEmail: "james.wilson@email.com",
-    userResponse: "confirmed_fraud",
-    device: "Unknown Browser",
-    ipAddress: "VPN/Proxy",
-    userLocation: "Chicago, USA",
-    transactionCount: 12,
-    timeWindow: "15 minutes",
-    riskFactors: [
-      { category: "Card Testing Pattern", description: "10 transactions of $1-$5 followed by $5,600 attempt", severity: "high", icon: "pattern" },
-      { category: "VPN/Proxy Detected", description: "Connection through known VPN service - Location masked", severity: "high", icon: "geographic" },
-      { category: "Unknown Device", description: "Browser fingerprint not recognized", severity: "medium", icon: "device" },
-      { category: "Velocity Check", description: "12 transactions in 15 minutes", severity: "high", icon: "velocity" },
-    ],
-  },
-]
+interface TransactionRow {
+  step: number | string
+  type: string
+  amount: number | string
+  nameOrig: string
+  isFraud?: boolean | string | number
+  predictedIsFraud?: boolean | string | number
+}
+
+const formatAmount = (amount: number) =>
+  amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+
+const computeScore = (amount: number) => {
+  const scaled = 70 + Math.log10(Math.max(amount, 1)) * 10
+  return Math.max(70, Math.min(99, Math.round(scaled)))
+}
 
 const typeStyles = {
   high: "bg-danger/10 text-danger border-danger/20",
@@ -297,10 +156,72 @@ function getRiskBgColor(score: number) {
 }
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>(initialAlerts)
+  const [alerts, setAlerts] = useState<Alert[]>([])
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/transactions/fraud?limit=20&use_model=true`
+        )
+        if (!res.ok) throw new Error(`status ${res.status}`)
+        const data = (await res.json()) as TransactionRow[]
+        const fraudRows = data.filter((row) => {
+          const flag = row.predictedIsFraud ?? row.isFraud
+          return typeof flag === "boolean" ? flag : String(flag) === "1"
+        })
+
+        const mapped: Alert[] = fraudRows.slice(0, 12).map((row, index) => {
+          const amount = Number(row.amount || 0)
+          const score = computeScore(amount)
+          return {
+            id: `ALT-${index + 1}`,
+            type: "high",
+            category: "Fraud",
+            title: `Suspected ${row.type} Fraud`,
+            description: "Transaction flagged as fraudulent by the model",
+            transactionId: row.nameOrig,
+            amount: formatAmount(amount),
+            location: "PaySim",
+            timestamp: `Step ${row.step}`,
+            score,
+            status: "pending",
+            userName: row.nameOrig || "Unknown",
+            userEmail: undefined,
+            userResponse: null,
+            device: undefined,
+            ipAddress: undefined,
+            userLocation: undefined,
+            transactionCount: undefined,
+            timeWindow: undefined,
+            riskFactors: [
+              {
+                category: "Model Flag",
+                description: "Transaction predicted as fraud",
+                severity: "high",
+                icon: "pattern",
+              },
+              {
+                category: "Amount",
+                description: `Amount ${formatAmount(amount)}`,
+                severity: "high",
+                icon: "amount",
+              },
+            ],
+          }
+        })
+
+        setAlerts(mapped)
+      } catch {
+        setAlerts([])
+      }
+    }
+
+    fetchAlerts()
+  }, [])
 
   const filteredAlerts = alerts.filter((alert) => {
     const matchesType = typeFilter === "all" || alert.type === typeFilter
