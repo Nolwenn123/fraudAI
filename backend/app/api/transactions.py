@@ -126,6 +126,91 @@ def read_rows(limit: int, use_model: bool, model_service: ModelService, min_frau
     return normalized
 
 
+def read_rows_window(limit: int, offset: int, use_model: bool, model_service: ModelService):
+    rows = []
+    with open(CSV_PATH, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for idx, row in enumerate(reader):
+            if idx < offset:
+                continue
+            rows.append(row)
+            if len(rows) >= limit:
+                break
+
+    preds = None
+    if use_model and model_service.ready and rows:
+        df = pd.DataFrame([
+            {
+                "type": r.get("type", ""),
+                "amount": float(r.get("amount", 0) or 0),
+                "oldbalanceOrg": float(r.get("oldbalanceOrg", 0) or 0),
+                "newbalanceOrig": float(r.get("newbalanceOrig", 0) or 0),
+                "oldbalanceDest": float(r.get("oldbalanceDest", 0) or 0),
+                "newbalanceDest": float(r.get("newbalanceDest", 0) or 0),
+            }
+            for r in rows
+        ])
+        preds = model_service.predict_is_fraud(df)
+
+    normalized = []
+    for i, r in enumerate(rows):
+        is_fraud = r.get("isFraud", r.get("is_fraud", "0"))
+        item = {
+            "step": int(r.get("step", 0) or 0),
+            "type": r.get("type", ""),
+            "amount": float(r.get("amount", 0) or 0),
+            "nameOrig": r.get("nameOrig", ""),
+            "isFraud": str(is_fraud),
+        }
+        if preds is not None:
+            item["predictedIsFraud"] = str(int(preds[i]))
+        normalized.append(item)
+
+    return normalized
+
+
+def read_fraud_rows(limit: int, use_model: bool, model_service: ModelService):
+    rows = []
+    with open(CSV_PATH, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if str(row.get("isFraud", "0")) == "1":
+                rows.append(row)
+                if len(rows) >= limit:
+                    break
+
+    preds = None
+    if use_model and model_service.ready and rows:
+        df = pd.DataFrame([
+            {
+                "type": r.get("type", ""),
+                "amount": float(r.get("amount", 0) or 0),
+                "oldbalanceOrg": float(r.get("oldbalanceOrg", 0) or 0),
+                "newbalanceOrig": float(r.get("newbalanceOrig", 0) or 0),
+                "oldbalanceDest": float(r.get("oldbalanceDest", 0) or 0),
+                "newbalanceDest": float(r.get("newbalanceDest", 0) or 0),
+            }
+            for r in rows
+        ])
+        preds = model_service.predict_is_fraud(df)
+
+    normalized = []
+    for i, r in enumerate(rows):
+        is_fraud = r.get("isFraud", r.get("is_fraud", "0"))
+        item = {
+            "step": int(r.get("step", 0) or 0),
+            "type": r.get("type", ""),
+            "amount": float(r.get("amount", 0) or 0),
+            "nameOrig": r.get("nameOrig", ""),
+            "isFraud": str(is_fraud),
+        }
+        if preds is not None:
+            item["predictedIsFraud"] = str(int(preds[i]))
+        normalized.append(item)
+
+    return normalized
+
+
 @router.get("/transactions")
 def get_transactions(
     limit: int = Query(200, ge=1, le=5000),
@@ -134,6 +219,25 @@ def get_transactions(
     model_service: ModelService = Depends(get_model_service),
 ):
     return read_rows(limit, use_model=use_model, model_service=model_service, min_fraud=min_fraud)
+
+
+@router.get("/transactions/list")
+def get_transactions_list(
+    limit: int = Query(50, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    use_model: bool = True,
+    model_service: ModelService = Depends(get_model_service),
+):
+    return read_rows_window(limit, offset, use_model=use_model, model_service=model_service)
+
+
+@router.get("/transactions/fraud")
+def get_fraud_transactions(
+    limit: int = Query(20, ge=1, le=5000),
+    use_model: bool = True,
+    model_service: ModelService = Depends(get_model_service),
+):
+    return read_fraud_rows(limit, use_model=use_model, model_service=model_service)
 
 
 @router.get("/stats")
