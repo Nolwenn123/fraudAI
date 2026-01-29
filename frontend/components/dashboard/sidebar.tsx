@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   ArrowLeftRight,
   AlertTriangle,
-  FileCode2,
   Settings,
   Shield,
   TrendingUp,
@@ -19,7 +18,7 @@ const navigation = [
   { name: "Transactions", href: "/transactions", icon: ArrowLeftRight },
   { name: "Alerts", href: "/alerts", icon: AlertTriangle },
   { name: "Analytics", href: "/analytics", icon: TrendingUp },
-  { name: "API", href: "/api-docs", icon: FileCode2 },
+  
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 
