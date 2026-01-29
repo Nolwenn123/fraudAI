@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -19,38 +20,233 @@ import {
   Cell,
 } from "recharts"
 
-const monthlyData = [
-  { month: "Jan", fraudDetected: 2100, falsePositives: 180, transactions: 1250000 },
-  { month: "Feb", fraudDetected: 1980, falsePositives: 165, transactions: 1180000 },
-  { month: "Mar", fraudDetected: 2340, falsePositives: 142, transactions: 1420000 },
-  { month: "Apr", fraudDetected: 2180, falsePositives: 128, transactions: 1380000 },
-  { month: "May", fraudDetected: 1890, falsePositives: 115, transactions: 1290000 },
-  { month: "Jun", fraudDetected: 2450, falsePositives: 98, transactions: 1520000 },
-]
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api"
 
-const fraudTypeData = [
-  { name: "Card Not Present", value: 42, color: "oklch(0.65 0.2 25)" },
-  { name: "Account Takeover", value: 28, color: "oklch(0.8 0.16 80)" },
-  { name: "Identity Theft", value: 18, color: "oklch(0.65 0.18 250)" },
-  { name: "Synthetic ID", value: 12, color: "oklch(0.72 0.19 160)" },
-]
+type TransactionRow = {
+  step: number | string
+  type: string
+  amount: number | string
+  nameOrig: string
+  isFraud?: boolean | string | number
+  predictedIsFraud?: boolean | string | number
+}
 
-const channelData = [
-  { channel: "Mobile App", approved: 45000, blocked: 120, review: 340 },
-  { channel: "Web Portal", approved: 32000, blocked: 85, review: 210 },
-  { channel: "POS Terminal", approved: 28000, blocked: 45, review: 89 },
-  { channel: "ATM", approved: 18000, blocked: 62, review: 156 },
-  { channel: "Wire Transfer", approved: 8500, blocked: 98, review: 245 },
-]
+type StatsResponse = {
+  total: number
+  fraud: number
+  approved: number
+  fraud_rate: number
+  approval_rate: number
+  avg_response_time_ms: number
+}
 
-const kpiData = [
-  { label: "Fraud Detection Rate", value: "99.4%", change: "+0.3%", positive: true },
-  { label: "False Positive Rate", value: "0.8%", change: "-0.2%", positive: true },
-  { label: "False Negative Rate", value: "0.6%", change: "-0.1%", positive: true },
-  { label: "Avg Decision Time", value: "124ms", change: "-12ms", positive: true },
+const formatPercent = (value: number) => `${(value * 100).toFixed(2)}%`
+const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value)
+
+const chartColors = [
+  "oklch(0.65 0.2 25)",
+  "oklch(0.8 0.16 80)",
+  "oklch(0.65 0.18 250)",
+  "oklch(0.72 0.19 160)",
+  "oklch(0.55 0.2 305)",
 ]
 
 export default function AnalyticsPage() {
+  const [stats, setStats] = useState<StatsResponse | null>(null)
+  const [sample, setSample] = useState<TransactionRow[]>([])
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/stats`)
+        if (!res.ok) throw new Error(`status ${res.status}`)
+        setStats((await res.json()) as StatsResponse)
+      } catch {
+        setStats(null)
+      }
+    }
+
+    const fetchSample = async () => {
+      try {
+        const [resList, resFraud] = await Promise.all([
+          fetch(`${API_BASE_URL}/transactions/list?limit=400&offset=0&use_model=true`),
+          fetch(`${API_BASE_URL}/transactions/fraud?limit=50&use_model=true`),
+        ])
+        if (!resList.ok) throw new Error(`status ${resList.status}`)
+        if (!resFraud.ok) throw new Error(`status ${resFraud.status}`)
+        const listData = (await resList.json()) as TransactionRow[]
+        const fraudData = (await resFraud.json()) as TransactionRow[]
+        const merged = new Map<string, TransactionRow>()
+        for (const row of listData) {
+          merged.set(`${row.nameOrig}-${row.step}`, row)
+        }
+        for (const row of fraudData) {
+          merged.set(`${row.nameOrig}-${row.step}`, row)
+        }
+        setSample(Array.from(merged.values()))
+      } catch {
+        setSample([])
+      }
+    }
+
+    fetchStats()
+    fetchSample()
+  }, [])
+
+  const metrics = useMemo(() => {
+    const rows = sample.map((row) => {
+      const predicted = row.predictedIsFraud ?? row.isFraud
+      const predFlag = typeof predicted === "boolean" ? predicted : String(predicted) === "1"
+      const actualFlag = String(row.isFraud ?? "0") === "1"
+      return {
+        type: row.type || "UNKNOWN",
+        amount: Number(row.amount || 0),
+        step: Number(row.step || 0),
+        predicted: predFlag,
+        actual: actualFlag,
+      }
+    })
+
+    let tp = 0
+    let fp = 0
+    let fn = 0
+    let tn = 0
+    rows.forEach((r) => {
+      if (r.predicted && r.actual) tp += 1
+      else if (r.predicted && !r.actual) fp += 1
+      else if (!r.predicted && r.actual) fn += 1
+      else tn += 1
+    })
+
+    const detectionRate = tp + fn > 0 ? tp / (tp + fn) : stats?.fraud_rate ?? 0
+    const falsePositiveRate = fp + tn > 0 ? fp / (fp + tn) : 0
+    const falseNegativeRate = tp + fn > 0 ? fn / (tp + fn) : 0
+
+    const byType = new Map<string, { total: number; fraud: number; fp: number }>()
+    rows.forEach((r) => {
+      const entry = byType.get(r.type) ?? { total: 0, fraud: 0, fp: 0 }
+      entry.total += 1
+      if (r.actual) entry.fraud += 1
+      if (r.predicted && !r.actual) entry.fp += 1
+      byType.set(r.type, entry)
+    })
+
+    const typeData = Array.from(byType.entries()).map(([type, value]) => ({
+      type,
+      fraudDetected: value.fraud,
+      falsePositives: value.fp,
+      transactions: value.total,
+      fraudRate: value.total ? value.fraud / value.total : 0,
+    }))
+
+    const sortedTypes = [...typeData].sort((a, b) => b.transactions - a.transactions)
+
+    const steps = rows.map((r) => r.step)
+    const minStep = steps.length ? Math.min(...steps) : 0
+    const maxStep = steps.length ? Math.max(...steps) : 0
+    const bucketCount = 5
+    const bucketSize = Math.max(1, Math.ceil((maxStep - minStep + 1) / bucketCount))
+    const buckets = Array.from({ length: bucketCount }, (_, idx) => ({
+      label: `${minStep + idx * bucketSize}-${minStep + (idx + 1) * bucketSize - 1}`,
+      transactions: 0,
+    }))
+    rows.forEach((r) => {
+      const index = Math.min(
+        bucketCount - 1,
+        Math.floor((r.step - minStep) / bucketSize)
+      )
+      buckets[index].transactions += 1
+    })
+
+    const amountBuckets = [
+      { label: "0-100", min: 0, max: 100, total: 0, fraud: 0 },
+      { label: "100-1k", min: 100, max: 1000, total: 0, fraud: 0 },
+      { label: "1k-10k", min: 1000, max: 10000, total: 0, fraud: 0 },
+      { label: "10k+", min: 10000, max: Number.POSITIVE_INFINITY, total: 0, fraud: 0 },
+    ]
+    rows.forEach((r) => {
+      const bucket = amountBuckets.find((b) => r.amount >= b.min && r.amount < b.max)
+      if (bucket) {
+        bucket.total += 1
+        if (r.actual) bucket.fraud += 1
+      }
+    })
+
+    return {
+      detectionRate,
+      falsePositiveRate,
+      falseNegativeRate,
+      typeData: sortedTypes,
+      buckets,
+      amountBuckets,
+    }
+  }, [sample, stats])
+
+  const kpiData = [
+    {
+      label: "Fraud Detection Rate",
+      value: formatPercent(metrics.detectionRate),
+      change: "sample",
+      positive: true,
+    },
+    {
+      label: "False Positive Rate",
+      value: formatPercent(metrics.falsePositiveRate),
+      change: "sample",
+      positive: true,
+    },
+    {
+      label: "False Negative Rate",
+      value: formatPercent(metrics.falseNegativeRate),
+      change: "sample",
+      positive: true,
+    },
+    {
+      label: "Avg Decision Time",
+      value: stats?.avg_response_time_ms ? `${Math.round(stats.avg_response_time_ms)}ms` : "—",
+      change: "runtime",
+      positive: true,
+    },
+  ]
+
+  const trendData = metrics.typeData.length
+    ? metrics.typeData
+    : [{ type: "N/A", fraudDetected: 0, falsePositives: 0, transactions: 0 }]
+
+  const fraudTypeData = metrics.typeData.length
+    ? metrics.typeData.map((item, index) => ({
+        name: item.type,
+        value: Math.round(item.fraudRate * 100),
+        color: chartColors[index % chartColors.length],
+      }))
+    : [{ name: "N/A", value: 100, color: chartColors[0] }]
+
+  const volumeData = metrics.buckets.length
+    ? metrics.buckets
+    : [{ label: "N/A", transactions: 0 }]
+
+  const channelData = metrics.typeData.length
+    ? metrics.typeData.map((item) => ({
+        channel: item.type,
+        approved: item.transactions - item.fraudDetected,
+        blocked: item.fraudDetected,
+      }))
+    : [{ channel: "N/A", approved: 0, blocked: 0 }]
+
+  const indicators = metrics.typeData.length
+    ? metrics.typeData.slice(0, 5).map((item) => ({
+        indicator: `${item.type} transactions`,
+        count: item.transactions,
+        percentage: Math.min(100, Math.round((item.transactions / (stats?.total || 1)) * 100)),
+      }))
+    : [{ indicator: "No data", count: 0, percentage: 0 }]
+
+  const highRisk = metrics.amountBuckets.map((bucket) => ({
+    label: bucket.label,
+    rate: bucket.total ? (bucket.fraud / bucket.total) * 100 : 0,
+    transactions: bucket.total,
+  }))
+
   return (
     <DashboardLayout
       title="Analytics"
@@ -86,17 +282,17 @@ export default function AnalyticsPage() {
             {/* Monthly Trend */}
             <Card className="border-border bg-card">
               <CardHeader>
-                <CardTitle className="text-card-foreground">Monthly Fraud Trend</CardTitle>
-                <CardDescription>
-                  Fraud detected vs false positives over the last 6 months
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={monthlyData}>
-                      <XAxis
-                        dataKey="month"
+            <CardTitle className="text-card-foreground">Fraud by Type</CardTitle>
+            <CardDescription>
+              Fraud detected vs false positives across transaction types
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData}>
+                    <XAxis
+                        dataKey="type"
                         stroke="oklch(0.65 0 0)"
                         fontSize={12}
                         tickLine={false}
@@ -141,10 +337,10 @@ export default function AnalyticsPage() {
             {/* Fraud Types Pie Chart */}
             <Card className="border-border bg-card">
               <CardHeader>
-                <CardTitle className="text-card-foreground">Fraud by Type</CardTitle>
-                <CardDescription>
-                  Distribution of fraud types detected this month
-                </CardDescription>
+            <CardTitle className="text-card-foreground">Fraud Share by Type</CardTitle>
+            <CardDescription>
+              Fraud rate by transaction type (sample)
+            </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
@@ -195,15 +391,15 @@ export default function AnalyticsPage() {
           {/* Transaction Volume */}
           <Card className="mt-6 border-border bg-card">
             <CardHeader>
-              <CardTitle className="text-card-foreground">Transaction Volume</CardTitle>
-              <CardDescription>
-                Total transactions processed per month
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData}>
+            <CardTitle className="text-card-foreground">Transaction Volume by Step Range</CardTitle>
+            <CardDescription>
+              Transactions grouped by step buckets (sample)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={volumeData}>
                     <defs>
                       <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="oklch(0.72 0.19 160)" stopOpacity={0.3} />
@@ -211,7 +407,7 @@ export default function AnalyticsPage() {
                       </linearGradient>
                     </defs>
                     <XAxis
-                      dataKey="month"
+                      dataKey="label"
                       stroke="oklch(0.65 0 0)"
                       fontSize={12}
                       tickLine={false}
@@ -222,7 +418,7 @@ export default function AnalyticsPage() {
                       fontSize={12}
                       tickLine={false}
                       axisLine={false}
-                      tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
+                      tickFormatter={(value) => formatNumber(value)}
                     />
                     <Tooltip
                       contentStyle={{
@@ -251,15 +447,15 @@ export default function AnalyticsPage() {
         <TabsContent value="channels" className="mt-6">
           <Card className="border-border bg-card">
             <CardHeader>
-              <CardTitle className="text-card-foreground">Performance by Channel</CardTitle>
-              <CardDescription>
-                Transaction outcomes across different payment channels
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px]">
+          <CardTitle className="text-card-foreground">Outcomes by Type</CardTitle>
+          <CardDescription>
+            Approved vs blocked by transaction type (sample)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={channelData} layout="vertical">
+                <BarChart data={channelData} layout="vertical">
                     <XAxis
                       type="number"
                       stroke="oklch(0.65 0 0)"
@@ -284,25 +480,20 @@ export default function AnalyticsPage() {
                         color: "oklch(0.95 0 0)",
                       }}
                     />
-                    <Bar dataKey="approved" stackId="a" fill="oklch(0.72 0.19 160)" name="Approved" />
-                    <Bar dataKey="review" stackId="a" fill="oklch(0.8 0.16 80)" name="Review" />
-                    <Bar dataKey="blocked" stackId="a" fill="oklch(0.65 0.2 25)" name="Blocked" />
-                  </BarChart>
-                </ResponsiveContainer>
+                  <Bar dataKey="approved" stackId="a" fill="oklch(0.72 0.19 160)" name="Approved" />
+                  <Bar dataKey="blocked" stackId="a" fill="oklch(0.65 0.2 25)" name="Blocked" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 flex items-center justify-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-success" />
+                <span className="text-sm text-muted-foreground">Approved</span>
               </div>
-              <div className="mt-4 flex items-center justify-center gap-6">
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-success" />
-                  <span className="text-sm text-muted-foreground">Approved</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-warning" />
-                  <span className="text-sm text-muted-foreground">Review</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-danger" />
-                  <span className="text-sm text-muted-foreground">Blocked</span>
-                </div>
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-danger" />
+                <span className="text-sm text-muted-foreground">Blocked</span>
+              </div>
               </div>
             </CardContent>
           </Card>
@@ -312,66 +503,54 @@ export default function AnalyticsPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <Card className="border-border bg-card">
               <CardHeader>
-                <CardTitle className="text-card-foreground">Common Fraud Indicators</CardTitle>
-                <CardDescription>Most frequently triggered fraud signals</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { indicator: "Unusual Transaction Amount", count: 2340, percentage: 28 },
-                    { indicator: "Geographic Anomaly", count: 1890, percentage: 23 },
-                    { indicator: "Velocity Threshold Exceeded", count: 1560, percentage: 19 },
-                    { indicator: "Device Fingerprint Mismatch", count: 1240, percentage: 15 },
-                    { indicator: "Time Pattern Deviation", count: 980, percentage: 12 },
-                  ].map((item) => (
-                    <div key={item.indicator} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-card-foreground">{item.indicator}</span>
-                        <span className="text-sm text-muted-foreground">{item.count}</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-secondary">
-                        <div
-                          className="h-full bg-primary transition-all"
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border bg-card">
-              <CardHeader>
-                <CardTitle className="text-card-foreground">High-Risk Regions</CardTitle>
-                <CardDescription>Fraud rate by geographic region</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { region: "Nigeria", rate: 4.2, transactions: 12500 },
-                    { region: "Ukraine", rate: 3.8, transactions: 8900 },
-                    { region: "Indonesia", rate: 2.9, transactions: 15600 },
-                    { region: "Brazil", rate: 2.4, transactions: 23400 },
-                    { region: "Vietnam", rate: 2.1, transactions: 11200 },
-                  ].map((item) => (
+            <CardTitle className="text-card-foreground">Most Common Types</CardTitle>
+            <CardDescription>Transaction type frequency (sample)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {indicators.map((item) => (
+                <div key={item.indicator} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-card-foreground">{item.indicator}</span>
+                    <span className="text-sm text-muted-foreground">{item.count}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary">
                     <div
-                      key={item.region}
-                      className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3"
-                    >
-                      <div>
-                        <p className="font-medium text-card-foreground">{item.region}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.transactions.toLocaleString()} transactions
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-danger">{item.rate}%</p>
-                        <p className="text-xs text-muted-foreground">Fraud rate</p>
-                      </div>
-                    </div>
-                  ))}
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${item.percentage}%` }}
+                    />
+                  </div>
                 </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <CardTitle className="text-card-foreground">Fraud Rate by Amount</CardTitle>
+            <CardDescription>Fraud rate by amount bucket (sample)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {highRisk.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3"
+                >
+                  <div>
+                    <p className="font-medium text-card-foreground">{item.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatNumber(item.transactions)} transactions
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-semibold text-danger">{item.rate.toFixed(2)}%</p>
+                    <p className="text-xs text-muted-foreground">Fraud rate</p>
+                  </div>
+                </div>
+              ))}
+            </div>
               </CardContent>
             </Card>
           </div>
