@@ -1,21 +1,21 @@
 from pathlib import Path
 import sys
+import time
 
-# Ensure project root is on the path so `ml` package is importable even when running from /backend
+# Ensure project root is on sys.path so the `ml` package is importable.
 ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import time
 
-from .api.transactions import router as transactions_router
-from .api.routes import router as api_router
-from .core.config import get_settings
-from .core.version import MODEL_VERSION
-from .dependencies import get_model_service
-from .core.metrics import record_latency
+from app.adapters.input.api.routes import router as api_router
+from app.adapters.input.api.transactions import router as transactions_router
+from app.adapters.output.metrics.in_memory_metrics_adapter import InMemoryMetricsAdapter
+from app.core.config import get_settings
+from app.core.version import MODEL_VERSION
+from app.dependencies import get_model_adapter
 
 
 def create_app() -> FastAPI:
@@ -34,20 +34,22 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    _metrics = InMemoryMetricsAdapter()
+
     @app.middleware("http")
     async def track_latency(request, call_next):
         start = time.perf_counter()
         response = await call_next(request)
-        duration_ms = (time.perf_counter() - start) * 1000
-        record_latency(duration_ms)
+        _metrics.record_latency((time.perf_counter() - start) * 1000)
         return response
 
+    app.include_router(api_router, prefix="/api")
     app.include_router(transactions_router, prefix="/api")
 
     @app.on_event("startup")
-    def startup():
-        # Prime the model in memory at startup
-        get_model_service(get_settings())
+    def startup() -> None:
+        # Warm up the model at startup so the first request is not slow.
+        get_model_adapter(settings)
 
     return app
 
