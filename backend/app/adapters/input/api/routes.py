@@ -11,7 +11,6 @@ from app.adapters.input.api.schemas import (
     PredictionOut,
     TransactionIn,
 )
-from app.adapters.output.ml.xgboost_model_adapter import XGBoostModelAdapter
 from app.application.ports.input.predict_fraud_use_case import PredictFraudUseCase
 from app.application.ports.output.fraud_model_port import FraudModelPort
 from app.domain.entities.transaction import Transaction
