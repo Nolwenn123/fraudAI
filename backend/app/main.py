@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import time
 
-from app.api.transactions import router as transactions_router
+from .api.transactions import router as transactions_router
 from .api.routes import router as api_router
 from .core.config import get_settings
 from .core.version import MODEL_VERSION
