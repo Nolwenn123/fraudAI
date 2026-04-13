@@ -9,6 +9,21 @@ Projet FastAPI + Next.js pour la détection de fraude (PaySim + XGBoost).
 
 ## Installation & démarrage (depuis la racine du repo)
 
+## Démarrage avec Docker
+```bash
+docker compose up --build
+```
+
+Services disponibles :
+- Frontend : `http://localhost:3000`
+- Backend : `http://localhost:8000`
+- Docs API : `http://localhost:8000/docs`
+
+Pour arrêter :
+```bash
+docker compose down
+```
+
 ### 1) Backend (FastAPI)
 ```bash
 python -m venv .venv
