@@ -10,6 +10,10 @@ from app.core.version import MODEL_VERSION
 from app.domain.entities.fraud_prediction import FraudPrediction
 from app.domain.entities.transaction import Transaction
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 
 def _transactions_to_df(transactions: List[Transaction]) -> pd.DataFrame:
     return pd.DataFrame([
@@ -35,6 +39,7 @@ class FraudDetectionService(PredictFraudUseCase):
     def predict_single(self, transaction: Transaction) -> FraudPrediction:
         df = _transactions_to_df([transaction])
         proba = float(self._model.predict_proba(df)[0])
+        logging.info(f"Single fraud prediction: {proba}")
         return FraudPrediction(
             fraud_probability=proba,
             is_fraud=proba >= self._threshold,
@@ -45,6 +50,8 @@ class FraudDetectionService(PredictFraudUseCase):
         if not transactions:
             return []
         df = _transactions_to_df(transactions)
+        logging.info(f"Batch fraud predictions for {len(transactions)} transactions")
+
         probas = self._model.predict_proba(df)
         return [
             FraudPrediction(
