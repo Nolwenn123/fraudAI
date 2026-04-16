@@ -1,0 +1,32 @@
+.git
+.gitignore
+.vscode
+.codex
+
+.env
+.env.local
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+venv/
+.venv/
+backend/venv/
+ml/src/venv/
+
+node_modules/
+frontend/node_modules/
+
+.next/
+frontend/.next/
+
+dist/
+build/
+coverage/
+
+*.log
+
+# Keep data/ and ml/artifacts/ (needed at runtime)
+# Do NOT ignore *.csv, *.joblib here unlike .gitignore
