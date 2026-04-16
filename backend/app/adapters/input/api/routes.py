@@ -10,6 +10,7 @@ from app.adapters.input.api.schemas import (
     ModelInfo,
     PredictionOut,
     TransactionIn,
+    WalletTransactionIn,
 )
 from app.application.ports.input.predict_fraud_use_case import PredictFraudUseCase
 from app.application.ports.output.fraud_model_port import FraudModelPort
@@ -61,6 +62,39 @@ def predict(
     service: PredictFraudUseCase = Depends(get_fraud_detection_service),
 ) -> PredictionOut:
     prediction = service.predict_single(_schema_to_domain(tx))
+    return PredictionOut(
+        fraud_probability=prediction.fraud_probability,
+        is_fraud=prediction.is_fraud,
+        model_version=prediction.model_version,
+    )
+
+
+@router.post("/predict/wallet", response_model=PredictionOut, tags=["prediction"])
+def predict_wallet(
+    tx: WalletTransactionIn,
+    service: PredictFraudUseCase = Depends(get_fraud_detection_service),
+) -> PredictionOut:
+    """Endpoint for the external wallet integration.
+
+    Accepts the wallet's transaction format and maps it to the internal
+    domain model before scoring.
+    """
+    tx_type = tx.transaction_type.upper()
+    valid_types = {"PAYMENT", "TRANSFER", "CASH_OUT", "CASH_IN", "DEBIT"}
+    if tx_type not in valid_types:
+        tx_type = "TRANSFER"
+
+    domain_tx = Transaction(
+        step=0,
+        type=tx_type,
+        amount=tx.amount,
+        name_orig="",
+        old_balance_orig=tx.sender_balance,
+        new_balance_orig=max(tx.sender_balance - tx.amount, 0.0),
+        old_balance_dest=tx.receiver_balance,
+        new_balance_dest=tx.receiver_balance + tx.amount,
+    )
+    prediction = service.predict_single(domain_tx)
     return PredictionOut(
         fraud_probability=prediction.fraud_probability,
         is_fraud=prediction.is_fraud,

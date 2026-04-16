@@ -37,6 +37,22 @@ class BatchOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Wallet integration (external wallet partner)
+# ---------------------------------------------------------------------------
+
+class WalletTransactionIn(BaseModel):
+    transaction_type: str = Field(..., description="e.g. TRANSFER, PAYMENT, CASH_OUT")
+    amount: float = Field(..., ge=0)
+    sender_balance: float = Field(..., ge=0, description="Sender balance before tx")
+    receiver_balance: float = Field(..., ge=0, description="Receiver balance before tx")
+    country: Optional[str] = None
+    city: Optional[str] = None
+    currency_code: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
 # System
 # ---------------------------------------------------------------------------
 
