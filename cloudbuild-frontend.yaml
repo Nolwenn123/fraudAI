@@ -1,0 +1,15 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - frontend/Dockerfile
+      - --build-arg
+      - NEXT_PUBLIC_API_BASE_URL=https://fraudai-backend-atotdpwiya-ew.a.run.app/api
+      - -t
+      - gcr.io/$PROJECT_ID/fraudai-frontend:latest
+      - .
+images:
+  - gcr.io/$PROJECT_ID/fraudai-frontend:latest
+options:
+  logging: CLOUD_LOGGING_ONLY

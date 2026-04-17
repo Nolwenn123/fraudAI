@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 
 from app.adapters.input.api.schemas import TransactionOut
+from app.adapters.output.persistence import live_feed_store
 from app.application.ports.input.get_stats_use_case import GetStatsUseCase
 from app.application.ports.input.get_transactions_use_case import GetTransactionsUseCase
 from app.dependencies import get_stats_service, get_transaction_service
@@ -57,6 +58,25 @@ def get_fraud_transactions(
 ) -> List[Dict[str, Any]]:
     transactions = service.get_fraud(limit, use_model=use_model)
     return [_domain_to_schema(tx) for tx in transactions]
+
+
+@router.get("/transactions/live", tags=["data"])
+def get_live_transactions(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> List[Dict[str, Any]]:
+    """Return the most recent transactions received via POST /predict*.
+
+    Used by the dashboard Live Feed and the Transactions page to display
+    only real incoming transactions (not historical PaySim samples).
+    """
+    return live_feed_store.get_recent(limit, offset)
+
+
+@router.get("/transactions/live/count", tags=["data"])
+def get_live_count() -> Dict[str, int]:
+    """Return the total number of transactions currently stored in the live buffer."""
+    return {"total": live_feed_store.size()}
 
 
 @router.get("/stats", tags=["data"])

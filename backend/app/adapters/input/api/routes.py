@@ -12,6 +12,7 @@ from app.adapters.input.api.schemas import (
     TransactionIn,
     WalletTransactionIn,
 )
+from app.adapters.output.persistence import live_feed_store
 from app.application.ports.input.predict_fraud_use_case import PredictFraudUseCase
 from app.application.ports.output.fraud_model_port import FraudModelPort
 from app.domain.entities.transaction import Transaction
@@ -61,7 +62,13 @@ def predict(
     tx: TransactionIn,
     service: PredictFraudUseCase = Depends(get_fraud_detection_service),
 ) -> PredictionOut:
-    prediction = service.predict_single(_schema_to_domain(tx))
+    domain_tx = _schema_to_domain(tx)
+    prediction = service.predict_single(domain_tx)
+    if tx.amount > tx.oldbalanceOrg:
+        prediction.is_fraud = True
+        prediction.fraud_probability = 1.0
+    domain_tx.predicted_is_fraud = prediction.is_fraud
+    live_feed_store.record(domain_tx)
     return PredictionOut(
         fraud_probability=prediction.fraud_probability,
         is_fraud=prediction.is_fraud,
@@ -95,6 +102,11 @@ def predict_wallet(
         new_balance_dest=tx.receiver_balance + tx.amount,
     )
     prediction = service.predict_single(domain_tx)
+    if tx.amount > tx.sender_balance:
+        prediction.is_fraud = True
+        prediction.fraud_probability = 1.0
+    domain_tx.predicted_is_fraud = prediction.is_fraud
+    live_feed_store.record(domain_tx)
     return PredictionOut(
         fraud_probability=prediction.fraud_probability,
         is_fraud=prediction.is_fraud,
