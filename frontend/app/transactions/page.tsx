@@ -99,29 +99,16 @@ export default function TransactionsPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/stats`)
-        if (!res.ok) throw new Error(`status ${res.status}`)
-        const data = await res.json()
-        setTotal(data.total ?? 0)
-      } catch {
-        setTotal(0)
-      }
-    }
-    fetchStats()
-  }, [])
-
-  useEffect(() => {
-    const fetchTransactions = async () => {
+    const fetchAll = async () => {
       try {
         setIsLoading(true)
         const offset = (page - 1) * PAGE_SIZE
-        const res = await fetch(
-          `${API_BASE_URL}/transactions/list?limit=${PAGE_SIZE}&offset=${offset}&use_model=true`
-        )
-        if (!res.ok) throw new Error(`status ${res.status}`)
-        const data = (await res.json()) as TransactionRow[]
+        const [listRes, countRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/transactions/live?limit=${PAGE_SIZE}&offset=${offset}`),
+          fetch(`${API_BASE_URL}/transactions/live/count`),
+        ])
+        if (!listRes.ok) throw new Error(`status ${listRes.status}`)
+        const data = (await listRes.json()) as TransactionRow[]
         const mapped = data.map((row) => {
           const fraudValue = row.predictedIsFraud ?? row.isFraud
           const isFraudFlag =
@@ -138,14 +125,19 @@ export default function TransactionsPage() {
           }
         })
         setTransactions(mapped)
+        if (countRes.ok) {
+          const countData = await countRes.json()
+          setTotal(countData.total ?? 0)
+        }
       } catch {
         setTransactions([])
+        setTotal(0)
       } finally {
         setIsLoading(false)
       }
     }
 
-    fetchTransactions()
+    fetchAll()
   }, [page])
 
   const filteredTransactions = useMemo(() => {

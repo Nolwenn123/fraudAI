@@ -1,14 +1,14 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Activity, CheckCircle, XCircle } from "lucide-react"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api"
-const LIVE_FEED_LIMIT = 50
-const CACHE_TTL_MS = 5 * 60 * 1000
+const POLL_INTERVAL_MS = 2000
+const DISPLAY_LIMIT = 7
 
 interface Transaction {
   id: string
@@ -39,15 +39,9 @@ const toTransaction = (row: TransactionRow): Transaction => {
     amount: formatAmount(String(row.amount)),
     merchant: row.type,
     status: isFraudFlag ? "blocked" : "approved",
-    time: `Step ${row.step}`,
+    time: `#${row.step}`,
   }
 }
-
-
-const initialTransactions: Transaction[] = []
-
-let cachedRows: TransactionRow[] | null = null
-let cachedAt = 0
 
 const statusConfig = {
   approved: {
@@ -63,62 +57,38 @@ const statusConfig = {
 }
 
 export function LiveFeed() {
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLive, setIsLive] = useState(true)
-  const [sourceRows, setSourceRows] = useState<TransactionRow[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const nextIndexRef = useRef<number>(initialTransactions.length)
 
   useEffect(() => {
-    const fetchTransactions = async () => {
+    if (!isLive) return
+
+    let cancelled = false
+
+    const fetchLive = async () => {
       try {
-        setIsLoading(true)
-        setLoadError(null)
-        const now = Date.now()
-        if (cachedRows && now - cachedAt < CACHE_TTL_MS) {
-          setSourceRows(cachedRows)
-          setTransactions(cachedRows.slice(0, 7).map(toTransaction))
-          nextIndexRef.current = 7
-          return
-        }
-
-        const res = await fetch(
-          `${API_BASE_URL}/transactions?limit=${LIVE_FEED_LIMIT}&use_model=true`
-        )
+        const res = await fetch(`${API_BASE_URL}/transactions/live?limit=${DISPLAY_LIMIT}`)
         if (!res.ok) throw new Error(`status ${res.status}`)
-        const data = await res.json()
-
-        if (Array.isArray(data) && data.length) {
-          cachedRows = data
-          cachedAt = now
-          setSourceRows(data)
-          setTransactions(data.slice(0, 7).map(toTransaction))
-          nextIndexRef.current = 7
+        const data: TransactionRow[] = await res.json()
+        if (cancelled) return
+        setLoadError(null)
+        if (Array.isArray(data)) {
+          setTransactions(data.map(toTransaction))
         }
       } catch (error) {
-        console.error("Failed to load live transactions from backend:", error)
-        setLoadError("Impossible de charger les transactions depuis le backend.")
-      } finally {
-        setIsLoading(false)
+        console.error("Failed to load live transactions:", error)
+        if (!cancelled) setLoadError("Impossible de charger les transactions depuis le backend.")
       }
     }
 
-    fetchTransactions()
-  }, [])
-
-  useEffect(() => {
-    if (!isLive || sourceRows.length === 0) return
-
-    const interval = setInterval(() => {
-      const current = sourceRows[nextIndexRef.current % sourceRows.length]
-      const newTransaction = toTransaction(current)
-      nextIndexRef.current += 1
-      setTransactions((prev) => [newTransaction, ...prev.slice(0, 6)])
-    }, 3000)
-
-    return () => clearInterval(interval)
-  }, [isLive, sourceRows])
+    fetchLive()
+    const interval = setInterval(fetchLive, POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [isLive])
 
   return (
     <Card className="border-border bg-card">
@@ -145,26 +115,21 @@ export function LiveFeed() {
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {isLoading && transactions.length === 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-4 text-sm text-muted-foreground">
-              Chargement des transactions depuis paysim.csv…
-            </div>
-          )}
-          {!isLoading && loadError && transactions.length === 0 && (
+          {loadError && transactions.length === 0 && (
             <div className="rounded-lg border border-dashed border-danger/30 bg-danger/5 p-4 text-sm text-danger">
               {loadError}
             </div>
           )}
-          {!isLoading && !loadError && transactions.length === 0 && (
+          {!loadError && transactions.length === 0 && (
             <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-4 text-sm text-muted-foreground">
-              Aucune transaction disponible pour le moment.
+              En attente de transactions… Envoie un POST sur /api/predict ou /api/predict/wallet pour voir apparaître la transaction ici.
             </div>
           )}
           {transactions.map((transaction, index) => {
             const StatusIcon = statusConfig[transaction.status].icon
             return (
               <div
-                key={`${transaction.id}-${index}`}
+                key={`${transaction.id}-${transaction.time}`}
                 className={cn(
                   "flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3 transition-all",
                   index === 0 && isLive && "animate-in fade-in slide-in-from-top-2 duration-300"

@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: fraudai-backend
+    environment:
+      PORT: "8000"
     ports:
       - "8000:8000"
 

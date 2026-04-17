@@ -16,7 +16,12 @@ class Settings(BaseSettings):
     api_description: str = "Score PaySim transactions and flag potential fraud."
     api_version: str = MODEL_VERSION
     cors_origins: List[str] = Field(
-        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://fraudai-frontend-572041457868.europe-west1.run.app",
+            "https://fraudai-frontend-atotdpwiya-ew.a.run.app",
+        ]
     )
     model_path: str = Field(
         default_factory=lambda: str(ML_ARTIFACTS_DIR / "model.joblib")
